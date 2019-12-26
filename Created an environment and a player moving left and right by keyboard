@@ -1,0 +1,88 @@
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import pygame
+import random
+
+
+# create window size
+WIDTH = 360
+HEIGHT = 360
+FPS = 30 # frame per second: how fast game will be
+
+# some colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+
+# Player
+class Player(pygame.sprite.Sprite):
+    # sprite for the player
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.Surface((20,20)) # creates my players outlook
+        self.image.fill(BLUE) # square object in blue color
+        self.rect = self.image.get_rect() # create frame for the object to control it easily
+        self.rect.centerx = WIDTH/2
+        self.rect.bottom = HEIGHT -1 
+        self.speedx = 0 #  pixels move in y directions
+        
+    def update(self):
+        self.speedx = 0 # in each update, set speed in x direction to zero
+        keystate = pygame.key.get_pressed() # it gets keys that I press 
+        
+        if keystate[pygame.K_LEFT]: # if we press left 
+            self.speedx = -4
+        elif keystate[pygame.K_RIGHT]: # if we press rigth 
+            self.speedx = 4
+        else:
+            self.speedx = 0 # else, stay there
+            
+        self.rect.x += self.speedx
+        
+        if self.rect.right > WIDTH: # we dont want player to go out of the picture from right 
+            self.rect.right = WIDTH
+            
+        if self.rect.left < 0: # we dont want player to go out of the picture from the left
+            self.rect.left = 0
+            
+    def getCoordinates(self):
+        return (self.rect.x, self.rect.y)
+
+
+# initialize pygame and create window
+pygame.init()
+screen = pygame.display.set_mode(size = (WIDTH, HEIGHT)) # sets width and height of the screen
+pygame.display.set_caption('RL Game') # gives a name (caption)
+clock = pygame.time.Clock()
+
+# create sprite
+all_sprite = pygame.sprite.Group()
+
+player = Player() # create a player
+all_sprite.add(player) # add the player to this sprite group
+
+# game loop
+running = True
+
+while running:
+    # keep loop running at a specific speed
+    clock.tick(FPS)
+    
+    # process input
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+            
+    # update
+    all_sprite.update()
+    
+    # draw and render
+    screen.fill(GREEN)
+    all_sprite.draw(screen)
+    
+    # after drawing flip display
+    pygame.display.flip() 
+
+pygame.quit()
