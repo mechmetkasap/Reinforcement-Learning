@@ -1,0 +1,209 @@
+!pip install pygame
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import pygame
+import random
+
+from collections import deque
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.optimizers import Adam # adaptive momentum 
+
+# create window size
+WIDTH = 360
+HEIGHT = 360
+FPS = 30 # frame per second: how fast game will be
+
+# some colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+
+# Player
+class Player(pygame.sprite.Sprite):
+    # sprite for the player
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = pygame.Surface((20,20)) # creates my players outlook
+        self.image.fill(BLUE) # square object in blue color
+        self.rect = self.image.get_rect() # create frame for the object to control it easily
+        
+        # Draw circle on image with red color, centered in rectengle with radius= 10
+        self.radius = 10
+        pygame.draw.circle(self.image, RED, self.rect.center, self.radius)
+        
+        self.rect.centerx = WIDTH/2
+        self.rect.bottom = HEIGHT -1 
+        self.speedx = 0 #  pixels move in y directions
+        
+    def update(self):
+        self.speedx = 0 # in each update, set speed in x direction to zero
+        keystate = pygame.key.get_pressed() # it gets keys that I press 
+        
+        if keystate[pygame.K_LEFT]: # if we press left
+            self.speedx = -4
+        elif keystate[pygame.K_RIGHT]: # if we press rigth
+            self.speedx = 4
+        else:
+            self.speedx = 0 # else, stay there
+            
+        self.rect.x += self.speedx
+        
+        if self.rect.right > WIDTH: # we dont want player to go out of the picture from right 
+            self.rect.right = WIDTH
+            
+        if self.rect.left < 0: # we dont want player to go out of the picture from the left
+            self.rect.left = 0
+            
+    def getCoordinates(self):
+        return (self.rect.x, self.rect.y)
+    
+class Enemy(pygame.sprite.Sprite):
+    
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        
+        self.image = pygame.Surface((10,10)) # create image of the enemy
+        self.image.fill(RED) # fill enemy in red color
+        self.rect = self.image.get_rect() # create rectengular frame for image so that I can use some methods of get_rect() method
+        
+        # Draw circle on image with white color, centered in rectengle with radius= 5
+        self.radius = 5
+        pygame.draw.circle(self.image, WHITE, self.rect.center, self.radius)
+        
+        self.rect.x = random.randrange(0, WIDTH - self.rect.width) # take into account also size of the enemy
+        self.rect.y = random.randrange(2,6) 
+        
+        self.speedx = 0
+        self.speedy = 3
+        
+    def update(self):
+        self.rect.x += self.speedx # start to move on x axis
+        self.rect.y += self.speedy # start to move on y axis
+        
+        if self.rect.top > HEIGHT + 10: # if enemy reaches bottom, go to top again
+            self.rect.x = random.randrange(0, WIDTH - self.rect.width) # take into account also size of the enemy
+            self.rect.y = random.randrange(2,6) 
+            self.speedy = 3
+            
+    def getCoordinates(self):
+        return (self.rect.x, self.rect.y)
+
+
+class DQLAgent(): 
+    
+    def __init__(self, env):
+        # parameters and hyperparameters
+        
+        # this part is for neural network or build_model()
+        self.state_size = 4
+        self.action_size = 3
+        
+        # this part is for replay()
+        self.gamma = 0.95
+        self.learning_rate = 0.001
+        
+        # this part is for adaptiveEGreedy()
+        self.epsilon = 1 # initial exploration rate
+        self.epsilon_decay = 0.995
+        self.epsilon_min = 0.01
+        
+        self.memory = deque(maxlen = 1000) # a list with 1000 memory, if it becomes full first inputs will be deleted
+        
+        self.model = self.build_model()
+    
+    def build_model(self):
+        # neural network for deep Q learning
+        model = Sequential()
+        model.add(Dense(48, input_dim = self.state_size, activation = 'tanh')) # first hidden layer
+        model.add(Dense(self.action_size, activation = 'linear')) # output layer
+        model.compile(loss = 'mse', optimizer = Adam(lr = self.learning_rate))
+        return model
+    
+    def remember(self, state, action, reward, next_state, done):
+        # storage
+        self.memory.append((state, action, reward, next_state, done))
+    
+    def act(self, state):
+        pass
+            
+    
+    def replay(self, batch_size):
+        # training
+        
+        if len(self.memory) < batch_size:
+            return # memory is still not full
+        
+        minibatch = random.sample(self.memory, batch_size) # take 16 (batch_size) random samples from memory
+        for state, action, reward, next_state, done in minibatch:
+            if done: # if the game is over, I dont have next state, I just have reward 
+                target = reward
+            else:
+                target = reward + self.gamma * np.amax(self.model.predict(next_state)[0]) 
+                # target = R(s,a) + gamma * max Q`(s`,a`)
+                # target (max Q` value) is output of Neural Network which takes s` as an input 
+                # amax(): flatten the lists (make them 1 list) and take max value
+            train_target = self.model.predict(state) # s --> NN --> Q(s,a)=train_target
+            train_target[0][action] = target
+            self.model.fit(state, train_target, verbose = 0) # verbose: dont show loss and epoch
+    
+    def adaptiveEGreedy(self):
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+    
+# initialize pygame and create window
+pygame.init()
+screen = pygame.display.set_mode(size = (WIDTH, HEIGHT)) # sets width and height of the screen
+pygame.display.set_caption('RL Game') # gives a name (caption)
+clock = pygame.time.Clock()
+
+# create sprite
+all_sprite = pygame.sprite.Group()
+enemy = pygame.sprite.Group()
+
+# create 1 player and 2 enemies
+player = Player() # create a player
+m1 = Enemy() # enemy 1
+m2 = Enemy() # enemy 2
+
+# add the player and enemies to this sprite group
+all_sprite.add(player) 
+all_sprite.add(m1)
+all_sprite.add(m2)
+enemy.add(m1)
+enemy.add(m2)
+
+# game loop
+running = True
+
+while running:
+    # keep loop running at a specific speed
+    clock.tick(FPS)
+    
+    # process input
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+            
+    # update
+    all_sprite.update()
+    
+    # collision
+    # when player collides with enemies, tell me (return a parameter)
+    hits = pygame.sprite.spritecollide(player, enemy, False, pygame.sprite.collide_circle)
+    
+    if hits:
+        running = False
+        print('game_over')
+    
+    # draw and render
+    screen.fill(GREEN)
+    all_sprite.draw(screen)
+    
+    # after drawing flip display
+    pygame.display.flip() 
+
+pygame.quit()
