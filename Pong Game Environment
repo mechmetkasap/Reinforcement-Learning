@@ -1,0 +1,207 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Dec 26 16:29:10 2019
+
+@author: melorine
+"""
+
+pip install pygame
+
+#%%
+import pygame
+import random
+
+# constant variables
+FPS = 60
+WINDOW_WIDTH = 400
+WINDOW_HEIGHT = 420
+GAME_HEIGHT = 400
+
+PADDLE_WIDTH = 15
+PADDLE_HEIGHT = 60
+PADDLE_BUFFER = 15 # These numbers are in pixels     
+
+BALL_WIDTH = 20
+BALL_HEIGHT = 20
+
+PADDLE_SPEED = 3
+BALL_X_SPEED = 2 
+BALL_Y_SPEED = 2
+
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT)) # create screen width and height
+
+#%%
+
+# (0,0) point is on the top left corner of each plotted object
+def drawPaddle(switch, paddleYPos):
+    # the paddle on the left
+    if switch == 'left':
+        
+        # create rectengular paddle at position x,y with width and height
+        paddle = pygame.Rect(PADDLE_BUFFER, paddleYPos, PADDLE_WIDTH, PADDLE_HEIGHT)
+    
+    # the paddle on the right
+    elif switch == 'right':
+        # create rectengular paddle at position x,y with width and height
+        paddle = pygame.Rect(WINDOW_WIDTH - PADDLE_BUFFER - PADDLE_WIDTH, paddleYPos, PADDLE_WIDTH, PADDLE_HEIGHT)
+    
+    # draw this created paddle on the screen white colored
+    pygame.draw.rect(screen, WHITE, paddle)   
+
+def drawBall(ballXPos, ballYPos):
+    
+    # create a ball at x=ballXPos, ...
+    ball = pygame.Rect(ballXPos, ballYPos, BALL_WIDTH, BALL_HEIGHT)
+    pygame.draw.rect(screen, WHITE, ball)
+
+def updatePaddle(switch, action, paddleYpos, ballYPos):
+    
+    dft = 7.5 # delta frame time
+    
+    # AGENT
+    if switch == 'left':
+        if action == 1: # move upward
+            paddleYpos = paddleYpos - PADDLE_SPEED*dft # x:= x+v*delta_t, upward means -
+            
+        if action == 2: # move downwards
+            paddleYpos = paddleYpos + PADDLE_SPEED*dft # x:= x+v*delta_t, downwards means +
+        
+        # to not move outside of the screeen
+        if paddleYpos < 0:
+            paddleYpos = 0
+            
+        if paddleYpos > (GAME_HEIGHT - PADDLE_HEIGHT):
+            paddleYpos = (GAME_HEIGHT - PADDLE_HEIGHT)
+    
+    # RIVAL        
+    elif switch == 'right':
+        # center of paddle < center of ball
+        if paddleYpos + PADDLE_HEIGHT/2 < ballYPos + BALL_HEIGHT/2: 
+            paddleYpos = paddleYpos + PADDLE_SPEED*dft 
+            
+        # center of paddle > center of ball (paddle is lower than the ball in heigth)
+        if paddleYpos + PADDLE_HEIGHT/2 > ballYPos + BALL_HEIGHT/2: 
+            paddleYpos = paddleYpos - PADDLE_SPEED*dft # move upwards (-y direction)
+        
+        # to not move outside of the screeen
+        if paddleYpos < 0:
+            paddleYpos = 0
+            
+        if paddleYpos > (GAME_HEIGHT - PADDLE_HEIGHT):
+            paddleYpos = (GAME_HEIGHT - PADDLE_HEIGHT)
+            
+    return paddleYpos 
+
+def updateBall(paddle1Ypos, paddle2Ypos, ballXPos, ballYPos, ballXDirection, ballYDirection, DeltaFrameTime):
+    
+    dft = 7.5
+    
+    ballXPos = ballXPos + ballXDirection*BALL_X_SPEED*dft
+    ballYPos = ballYPos + ballYDirection*BALL_Y_SPEED*dft
+    
+    score = -0.05 # living penalty, give penalty as time passes
+    
+    # AGENT (LEFT PADDLE)
+    # ball collides with paddle 1
+    if (ballXPos <= (PADDLE_BUFFER + PADDLE_WIDTH)) and ((ballYPos + BALL_HEIGHT) >= paddle1Ypos) and (ballYPos <= (paddle1Ypos + PADDLE_HEIGHT)) and (ballXDirection == -1):
+        ballXDirection = 1
+        score = 10 # give reward
+    
+    # ball does not collide with paddle 1, it collides with wall
+    elif (ballXPos <= 0):
+        ballXDirection = 1
+        score = -10
+        
+        return [score, ballXPos, ballYPos, ballXDirection, ballYDirection]
+    # Paddle 2 (right paddle)
+    if (ballXPos >= (WINDOW_WIDTH- PADDLE_WIDTH - PADDLE_BUFFER)) and ((ballYPos + BALL_HEIGHT) >=  paddle2Ypos) and (ballYPos <= (paddle2Ypos + PADDLE_HEIGHT)) and (ballXDirection == 1):
+        ballXDirection = -1
+    elif (ballXPos >= WINDOW_WIDTH - BALL_WIDTH):
+        ballXDirection = -1
+        return [score, ballXPos, ballYPos, ballXDirection, ballYDirection]
+    
+    if ballYPos <= 0:
+        ballYPos = 0
+        ballYDirection = 1
+    elif ballYPos >= (GAME_HEIGHT - BALL_HEIGHT):
+        ballYPos = (GAME_HEIGHT - BALL_HEIGHT)
+        ballYDirection = -1
+        
+    return [score, ballXPos, ballYPos, ballXDirection, ballYDirection]
+
+        
+class PongGame:
+    def __init__(self):
+        pygame.init() # initialize pygame
+        pygame.display.set_caption('Pong DCQL Env')
+        
+        
+        # paddle 1 is our agent
+        # paddle 2 is my rival
+        self.paddle1Ypos = GAME_HEIGHT/2 - PADDLE_HEIGHT/2
+        self.paddle2Ypos = GAME_HEIGHT/2 - PADDLE_HEIGHT/2
+        
+        # for initial position of the ball
+        self.ballXPos = WINDOW_WIDTH/2
+        
+        self.clock = pygame.time.Clock()
+        
+        self.GScore = 0.0 # game score (float number)
+        
+        # for velocity of the ball
+        # take 1 sample from the list [-1,1] and make it number by using [0]
+        self.ballXDirection = random.sample([-1,1], 1)[0] 
+        self.ballYDirection = random.sample([-1,1], 1)[0] 
+        
+        # ball y position will be a random point from the line which is in the middle of the screen 
+        self.ballYPos = random.randint(0,9)* (WINDOW_HEIGHT - BALL_HEIGHT)/9 
+        
+    
+    def InitialDisplay(self):
+        pygame.event.pump()
+        screen.fill(BLACK)
+        
+        # draw the padel 2 times
+        drawPaddle('left', self.paddle1Ypos)
+        drawPaddle('right', self.paddle2Ypos)
+        
+        drawBall(self.ballXPos, self.ballYPos)
+        
+        pygame.display.flip() # show the new created and updated screen
+      
+    def PlayNextMove(self, action):
+        
+        DeltaFrameTime = self.clock.tick(FPS) # delta_t
+        
+        pygame.event.pump() # synchronize game
+        
+        score = 0
+        
+        screen.fill(BLACK)
+        
+        self.paddle1Ypos = updatePaddle('left', action, self.paddle1Ypos, self.ballYPos)
+        drawPaddle('left', self.paddle1Ypos)
+        
+        self.paddle2Ypos = updatePaddle('right', action, self.paddle2Ypos, self.ballYPos)
+        drawPaddle('right', self.paddle2Ypos)
+        
+        [score, self.ballXPos, self.ballYpos, self.ballXDirection, self.ballYDirection] = updateBall(self.paddle1Ypos, self.paddle2Ypos, self.ballXPos, self.ballYPos, self.ballXDirection, self.ballYDirection, DeltaFrameTime)
+        
+        drawBall(self.ballXPos, self.ballYpos)
+        
+        if (score > 0.5 or score < -0.5):
+            self.GScore = self.GScore * 0.9 + 0.1*score 
+            
+        # take screen image
+        # screen_image = next_state
+        ScreenImage = pygame.surfarray.array3d(pygame.display.get_surface())
+
+        pygame.display.flip()
+        
+        return [score, ScreenImage]
+
+
+ 
