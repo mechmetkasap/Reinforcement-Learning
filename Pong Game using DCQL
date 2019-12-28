@@ -1,0 +1,90 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Dec 28 18:16:43 2019
+
+@author: melorine
+"""
+
+import DCQL_Agent_Class
+import DCQL_Pong
+import numpy as np
+import skimage as skimage
+import warnings
+warnings.filterwarnings('ignore')
+import matplotlib.pyplot as plt
+
+#%%
+TOTAL_TrainTime = 100000
+
+IMGHEIGHT = 40
+IMGWIDTH = 40
+IMGHISTORY = 4
+
+# takes orijinal images and convert them into 40x40
+def ProcessGameImage(RawImage):
+    
+    GreyImage = skimage.color.rgb2gray(RawImage) # convert image to gray scale
+    CroppedImage = GreyImage[0:400, 0:400]   # crop image 
+    
+    # transform the size of the cropped image into 40x40
+    ReducedImage = skimage.transform.resize(CroppedImage, (IMGHEIGHT, IMGWIDTH))
+    ReducedImage = skimage.exposure.rescale_intensity(ReducedImage, out_range = (0, 255))
+    
+    # normalize
+    ReducedImage = ReducedImage / 128
+    
+    return ReducedImage
+
+def TrainExperiment():
+    
+    TrainHistory = []
+    
+    # create environment
+    TheGame = DCQL_Pong.PongGame()
+    
+    # show inital display of the environment
+    TheGame.InitialDisplay()
+    
+    # create agent
+    TheAgent = DCQL_Agent_Class.Agent()
+    
+    # initial action
+    BestAction = 0 # randomly chosen
+    
+    # initial score and image after first action
+    [InitialScore, InitialScreenImage] = TheGame.PlayNextMove(BestAction)
+    
+    # convert this image to 40x40 greyscale
+    InitialGameImage = ProcessGameImage(InitialScreenImage)
+    
+    # create 4 images to observe how the ball moves
+    # initially i have 4 same images
+    # it is now 40x40x4
+    GameState = np.stack((InitialGameImage, InitialGameImage, InitialGameImage, InitialGameImage), axis=2)
+    
+    # keras needs 1x40x40x4
+    GameState = GameState.reshape(1, GameState.shape[0], GameState.shape[1], GameState.shape[2])
+    
+    # since i have now inital states i can start trainning
+    
+    for i in range(TOTAL_TrainTime):
+        
+        BestAction = TheAgent.FindBestAct(GameState)
+        [ReturnScore, NewScreenImage] = TheGame.PlayNextMove(BestAction)
+        NewGameImage = ProcessGameImage(NewScreenImage)
+        NewGameImage = NewGameImage.reshape(1, NewGameImage.shape[0], NewGameImage.shape[1], 1)
+        
+        NextState = np.append(NewGameImage, GameState[:, :, :, :3], axis =3)
+        
+        TheAgent.CaptureSample((GameState, BestAction, ReturnScore, NextState))
+        
+        TheAgent.Process()
+        
+        GameState = NextState
+        
+        if i % 250 == 0:
+            print('Train time: ', i, 'game score: ', TheGame.GScore)
+            TrainHistory.append(TheGame.GScore)
+            
+TrainExperiment()       
+    
